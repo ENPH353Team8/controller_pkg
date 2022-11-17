@@ -1,0 +1,7 @@
+<launch>
+    <node pkg="controller_pkg"
+    type="datacollector.py"
+    name="datacollector"
+    output="screen">
+    </node>
+</launch>
