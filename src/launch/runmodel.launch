@@ -1,0 +1,7 @@
+<launch>
+    <node pkg="controller_pkg"
+    type="runmodel.py"
+    name="runmodel"
+    output="screen">
+    </node>
+</launch>
