@@ -1,0 +1,482 @@
+#! /usr/bin/env python3
+from __future__ import print_function
+
+from PyQt5 import QtCore, QtGui, QtWidgets
+from python_qt_binding import loadUi
+
+import cv2
+import sys
+
+from scipy import stats as st
+import numpy as np
+import cv2 as cv
+
+import rospy
+
+from std_msgs.msg import String
+from sensor_msgs.msg import Image
+from cv_bridge import CvBridge, CvBridgeError
+cv2.__version__
+from geometry_msgs.msg import Twist
+from random import randrange
+
+from matplotlib import pyplot as plt
+
+import os
+
+import tensorflow as tf
+from tensorflow import keras
+
+
+
+# Load images at start
+TEST_IMAGE = cv2.imread("/home/fizzer/ros_ws/src/controller_pkg/src/node/blurryP.png", cv2.IMREAD_GRAYSCALE)  # queryiamge
+TEST_IMAGE2 = cv2.imread("/home/fizzer/ros_ws/src/controller_pkg/src/node/blurryp2.png", cv2.IMREAD_GRAYSCALE)
+
+# complete SIFT operations on images before to lower computation time each loop
+# Features
+sift = cv2.xfeatures2d.SIFT_create()
+kp_image, desc_image = sift.detectAndCompute(TEST_IMAGE, None)
+# Feature matching
+index_params = dict(algorithm=0, trees=5)
+search_params = dict()
+flann = cv2.FlannBasedMatcher(index_params, search_params)
+
+# Returns coordinates of four corners of a selected image in a frame
+# Returns None if the image is not located inside the frame
+def DoSIFT(img, frame):
+  grayframe = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)  # trainimage
+  kp_grayframe, desc_grayframe = sift.detectAndCompute(grayframe, None)
+  matches = flann.knnMatch(desc_image, desc_grayframe, k=2)
+  good_points = []
+  for m, n in matches:
+    # increased threshold to 0.8 to increase chance of finding 'P'
+      if m.distance < 0.8 * n.distance:
+          good_points.append(m)
+
+  query_pts = np.float32([kp_image[m.queryIdx].pt for m in good_points]).reshape(-1, 1, 2)
+  train_pts = np.float32([kp_grayframe[m.trainIdx].pt for m in good_points]).reshape(-1, 1, 2)
+    
+  matrix = None
+
+  try:
+    matrix, mask = cv2.findHomography(query_pts, train_pts, cv2.RANSAC, 5.0)
+    
+    h, w = img.shape
+    pts = np.float32([[0, 0], [0, h], [w, h], [w, 0]]).reshape(-1, 1, 2)
+    siftPts = cv2.perspectiveTransform(pts, matrix)
+
+    return siftPts
+  except Exception:
+    return None
+
+def get_actual_point(pts, i):
+    return [pts[i][0][0], pts[i][0][1]]
+
+# Retrieve the coordinates from points from the data structure returned by SIFT
+def cleanPoints(pts):
+
+  p1 = get_actual_point(pts, 0)
+  p2 = get_actual_point(pts, 1)
+  p3 = get_actual_point(pts, 2)
+  p4 = get_actual_point(pts, 3)
+
+  return [p1, p2, p3, p4]
+
+# Returns the average value of a component of a set of vectors
+def averageCoord(points, dim):
+  sum = 0
+  for i in range(len(points)):
+    sum += points[i][dim]
+  return sum/len(points)
+
+# Returns the average of 3 numbers
+def averageNumber(x, y, z):
+  sum = x + y + z
+  return sum/3
+
+# checks if the blue shade of interest is present on a particular pixel
+def checkBlue(B, G, R):
+  
+  if ((B >= 190 and B <= 220) or (B >= 90 and B <= 130)) and ((G <= 20 and R <= 20)):
+    return True
+  
+  elif (B >= 190 and B <= 220) and (G >= 90 and G <= 130) and (R <= 90 and R >= 105):
+    return True
+  
+  else:
+    return False
+
+#checks whether the SIFT prediction occurs within a parked car
+def checkValidity(row, numCols, homography):
+  for col in range(len(homography[0])):
+    B = homography[row][col][0]
+    G = homography[row][col][1]
+    R = homography[row][col][2]
+    checkBlue(B, G, R)
+    if checkBlue(B, G, R):
+      return True
+  return False
+
+#returns leftmost column of license plate
+def leftLimit(row, xVal, homography):
+  for col in range(xVal):
+    val = homography[row][xVal - col][0]
+    val2 = homography[row][xVal - col][1]
+    val3 = homography[row][xVal - col][2]
+    if checkBlue(val, val2, val3):
+      return xVal - col
+  return 0
+
+#returns rightmost column of license plate
+def rightLimit(row, xVal, homography):
+  for col in range(len(homography[0]) - xVal):
+    val = homography[row][xVal + col - 1][0]
+    val2 = homography[row][xVal + col - 1][1]
+    val3 = homography[row][xVal + col - 1][2]
+    if checkBlue(val, val2, val3):
+      return xVal + col
+  return len(homography[0])
+
+#checks whether a pixel is part of a letter
+def checkLetter(B, G, R):
+  if (B >= 85 and B <= 130) and (G >= 8 and G <= 60) and (R >= 8 and R <= 60):
+    return True
+  return False
+
+#Converts one-hot-encoding of CNN model to prediction 
+def prediction(y_predict):
+  max = 0
+  val = 0
+  for i in range(len(y_predict)):
+    if (y_predict[i] > max):
+      max = y_predict[i]
+      val = i
+
+
+  if (val < 26):
+    val += 65
+    guess = chr(val)
+
+  else:
+    val -= 26
+    val += 48
+    guess = chr(val)
+    
+  return str(guess)
+
+# Transforms image to be ready for CNN
+def img_transform(img, dim, threshold):
+  scale1 = cv2.resize(img, dim, interpolation = cv2.INTER_AREA)
+  gray1 = cv2.cvtColor(scale1, cv2.COLOR_RGB2GRAY)
+  _, sizedL1 = cv2.threshold(gray1, threshold, 255, cv2.THRESH_BINARY)
+  return sizedL1
+
+
+class image_converter:
+
+  def __init__(self):
+    self.bridge = CvBridge()
+    self.image_sub = rospy.Subscriber('/R1/pi_camera/image_raw',Image, self.callback)
+
+  def callback(self,data):
+    try:
+      cv_image = self.bridge.imgmsg_to_cv2(data, "bgr8")
+    except CvBridgeError as e:
+      print(e)
+
+    ## Display the output of the camera on the robot
+    cv2.imshow("Image window", cv_image)
+    cv2.waitKey(1)
+
+    frame = cv_image
+
+    siftPoints = np.zeros([4, 2])
+
+    homography = frame
+
+    #chooseImg = np.random.randint(0, 2)
+    #print(chooseImg)
+
+    # if chooseImg == 0:
+    #   img = TEST_IMAGE
+    # elif chooseImg == 1:
+    #   img = TEST_IMAGE2
+
+    # Image is processed with SIFT to locate letter 'P':
+    sift = DoSIFT(TEST_IMAGE, frame)
+    if sift is None:
+      return
+    siftPoints = cleanPoints(sift)
+
+    # If SIFT finds the P, SIFT is performed 2 more times
+    sift2 = DoSIFT(TEST_IMAGE, frame)
+    siftPoints2 = cleanPoints(sift2)
+
+    sift3 = DoSIFT(TEST_IMAGE, frame)
+    siftPoints3 = cleanPoints(sift3)
+
+    # Coordinates of each SIFT iteration are averaged for the centre location of the P
+    avgX1 = averageCoord(siftPoints, 0)
+    avgY1 = averageCoord(siftPoints, 1)
+
+    avgX2 = averageCoord(siftPoints2, 0)
+    avgY2 = averageCoord(siftPoints2, 1)
+
+    avgX3 = averageCoord(siftPoints3, 0)
+    avgY3 = averageCoord(siftPoints3, 1)
+
+    # Average location of P is used
+    averageX = averageNumber(avgX1, avgX2, avgX3)
+    averageY = averageNumber(avgY1, avgY2, avgY3)
+
+    valid = False
+    
+    # Checks whether the location of the P is within a license plate
+    try:
+      valid = checkValidity(int(averageY), len(homography[0]), homography)
+
+    except Exception:
+      valid = True
+
+    # cv2.circle(img=homography, center = (int(averageX), int(averageY)), radius =20, color =(255,0,0), thickness=-1)
+    # cv2.imshow("Homography", homography)
+    # cv2.waitKey(1)
+
+    if valid:
+
+      # Calculates left and right endpoints of a license plate
+      x1 = leftLimit(int(averageY), int(averageX), homography)
+      x2 = rightLimit(int(averageY), int(averageX), homography)
+
+      subframe = frame[int(averageY) - 50: int(averageY) + 100, x1: x2]
+      # cv2.imshow("subframe", subframe)
+      # cv2.waitKey(1)
+
+      # Filter out every pixel except pixels with the colour corresponding to the letters:
+      for row in range(len(subframe)):
+        for col in range(len(subframe[0])):
+          val = subframe[row][col][0]
+          val2 = subframe[row][col][1]
+          val3 = subframe[row][col][2]
+          if checkLetter(val, val2, val3):
+            subframe[row][col][0] = 0
+            subframe[row][col][1] = 0
+            subframe[row][col][2] = 0
+          else:
+            subframe[row][col][0] = 250
+            subframe[row][col][1] = 250
+            subframe[row][col][2] = 250
+
+
+      # Filter out the left and right edges which may contain blue pixels
+      for row in range(len(subframe)):
+        for col in range(4):
+          subframe[row][col][0] = 250
+          subframe[row][col][1] = 250
+          subframe[row][col][2] = 250
+          subframe[row][len(subframe[0]) - 1 - col][0] = 250
+          subframe[row][len(subframe[0]) - 1 - col][1] = 250
+          subframe[row][len(subframe[0]) - 1 - col][2] = 250
+
+      # Find the top and bottom of the license plate
+      y_max = 0
+      y_min = 0
+
+      # Find top of plate
+      for row in range(len(subframe)):
+        for col in range(5, len(subframe[0]) - 5):
+          val = subframe[row][col][0]
+          if val == 0:
+            y_max = row
+        
+        if y_max != 0:
+          break
+
+      # find bottom of plate
+      for row in range(len(subframe)):
+        for col in range(5, len(subframe[0]) - 5):
+          val = subframe[len(subframe) - 1 - row][col][0]
+          if val == 0:
+            y_min = len(subframe) - 1 - row
+        
+        if y_min != 0:
+          break
+      
+      plate = subframe[y_max - 2: y_min + 2,]
+      cv2.imshow("plate", plate)
+      cv2.waitKey(1)
+
+      # Slice plate into each letter
+      length = len(subframe[0]) 
+      quad = int(length/4)
+
+      dim = (20, 12)
+      threshold = 120
+
+      letter1 = plate[0:len(plate),0:quad]
+      sizedL1 = img_transform(letter1, dim, threshold)
+
+      letter2 = plate[0:len(plate),quad: 2*quad]
+      sizedL2 = img_transform(letter2, dim, threshold)
+
+      letter3 = plate[0:len(plate),2*quad:3*quad]
+      sizedL3 = img_transform(letter3, dim, threshold)
+
+      letter4 = plate[0:len(plate),3*quad:4*quad - 1]
+      sizedL4 = img_transform(letter4, dim, threshold)
+
+      cv2.imshow("L1", sizedL1)
+      cv2.waitKey(1)
+      cv2.imshow("L2", sizedL2)
+      cv2.waitKey(1)
+      cv2.imshow("L3", sizedL3)
+      cv2.waitKey(1)
+      cv2.imshow("L4", sizedL4)
+      cv2.waitKey(1)
+
+      cv2.imwrite("/home/fizzer/ros_ws/src/controller_pkg/src/node/letter.jpg", sizedL1)
+
+      
+      new_model = tf.keras.models.load_model('/home/fizzer/ros_ws/src/controller_pkg/src/node/convolution2.h5')
+
+      y_predict1 = new_model.predict(np.expand_dims(sizedL1, axis=0))[0]
+      y_predict2 = new_model.predict(np.expand_dims(sizedL2, axis=0))[0]
+      y_predict3 = new_model.predict(np.expand_dims(sizedL3, axis=0))[0]
+      y_predict4 = new_model.predict(np.expand_dims(sizedL4, axis=0))[0]
+
+      guess = np.array(["", "", "", ""])
+
+      guess[0] = prediction(y_predict1)
+      guess[1] = prediction(y_predict2)
+      guess[2] = prediction(y_predict3)
+      guess[3] = prediction(y_predict4)
+
+      print(guess)
+      
+    else:
+      return
+
+def dataprocess(img, h, w):
+
+  subimg = img[h:h + 500, w: w + 500]
+  plt.imshow(subimg)
+  plt.show()
+  findParkingID(img)
+
+
+def findParkingID(img):
+
+  prediction = np.array([0,0,0,0,0,0,0,0])
+
+  for i in range(8):
+    h, w = SIFT(8 - i, img)
+
+    #if pred != 0:
+     # print(pred)
+      #return pred
+
+  # for j in range(5):
+
+  #   for i in range(1,8):
+  #     pred = SIFT(i, img)
+
+  #     if isinstance(pred, int):
+  #       prediction[i - 1] = prediction[i - 1] + 1
+
+  # max_pred = np.argmax(prediction) + 1
+
+  # print(prediction)
+  # print(max_pred)
+    
+
+
+def SIFT(chooseImage, cv):
+
+  frame = cv
+  
+  if (chooseImage == 1):
+    img = cv2.imread("/home/fizzer/ros_ws/src/controller/src/node/1.png", cv2.IMREAD_GRAYSCALE)  # queryiamge
+
+  elif (chooseImage == 2):
+    img = cv2.imread("/home/fizzer/ros_ws/src/controller/src/node/2.png", cv2.IMREAD_GRAYSCALE)  # queryiamge
+  
+  elif (chooseImage == 3):
+    img = cv2.imread("/home/fizzer/ros_ws/src/controller/src/node/3.png", cv2.IMREAD_GRAYSCALE)  # queryiamge
+  
+  elif (chooseImage == 4):
+    img = cv2.imread("/home/fizzer/ros_ws/src/controller/src/node/4.png", cv2.IMREAD_GRAYSCALE)  # queryiamge
+
+  elif (chooseImage == 5):
+    img = cv2.imread("/home/fizzer/ros_ws/src/controller/src/node/5.png", cv2.IMREAD_GRAYSCALE)  # queryiamge
+
+  elif (chooseImage == 6):
+    img = cv2.imread("/home/fizzer/ros_ws/src/controller/src/node/6.png", cv2.IMREAD_GRAYSCALE)  # queryiamge
+
+  elif (chooseImage == 7):
+    img = cv2.imread("/home/fizzer/ros_ws/src/controller/src/node/7.png", cv2.IMREAD_GRAYSCALE)  # queryiamge
+
+  elif (chooseImage == 8):
+    img = cv2.imread("/home/fizzer/ros_ws/src/controller/src/node/8.png", cv2.IMREAD_GRAYSCALE)  # queryiamge
+
+  #thresh = 0.7
+
+  #if (chooseImage == 6 or chooseImage == 1 or chooseImage == 7):
+   # thresh = 0.6
+  
+  cap = frame
+  # Features
+  sift = cv2.xfeatures2d.SIFT_create()
+  kp_image, desc_image = sift.detectAndCompute(img, None)
+  # Feature matching
+  index_params = dict(algorithm=0, trees=5)
+  search_params = dict()
+  flann = cv2.FlannBasedMatcher(index_params, search_params)
+
+  grayframe = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)  # trainimage
+  kp_grayframe, desc_grayframe = sift.detectAndCompute(grayframe, None)
+  matches = flann.knnMatch(desc_image, desc_grayframe, k=2)
+  good_points = []
+
+  for m, n in matches:
+    if m.distance < 0.7 * n.distance:
+        good_points.append(m)
+
+  query_pts = np.float32([kp_image[m.queryIdx].pt for m in good_points]).reshape(-1, 1, 2)
+  train_pts = np.float32([kp_grayframe[m.trainIdx].pt for m in good_points]).reshape(-1, 1, 2)
+    
+  found = True
+
+  try:
+    matrix, mask = cv2.findHomography(query_pts, train_pts, cv2.RANSAC, 5.0)
+    matches_mask = mask.ravel().tolist()
+  except Exception:
+    return 0
+
+  # Perspective transform
+  h, w = img.shape
+  pts = np.float32([[0, 0], [0, h], [w, h], [w, 0]]).reshape(-1, 1, 2)
+  dst = cv2.perspectiveTransform(pts, matrix)
+
+  num_homography = cv2.polylines(frame, [np.int32(dst)], True, (250, 0, 0), 3)
+  cv2.imshow("Number Homography", num_homography)
+  cv2.waitKey(1)
+
+  print(chooseImage)
+  return h, w
+  #return chooseImage
+
+
+def main(args):
+  ic = image_converter()
+  ic.__init__
+  rospy.init_node('image_converter', anonymous=True)
+
+  try:
+    rospy.spin()
+  except KeyboardInterrupt:
+    print("Shutting down")
+  cv2.destroyAllWindows()
+
+if __name__ == '__main__':
+    main(sys.argv)
