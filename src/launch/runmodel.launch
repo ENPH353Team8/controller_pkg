@@ -4,4 +4,14 @@
     name="runmodel"
     output="screen">
     </node>
+    <node pkg="controller_pkg"
+    type="timer.py"
+    name="timer"
+    output="screen">
+    </node>
+    <node pkg="controller_pkg"
+    type="sift.py"
+    name="sift"
+    output="screen">   
+    </node>
 </launch>

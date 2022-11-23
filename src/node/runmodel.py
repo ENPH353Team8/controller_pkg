@@ -20,8 +20,6 @@ from tensorflow import keras
 
 LINVEL = 0.2
 ANGVEL = 0.4
-t = time.time()
-init = 0
 
 new_model = tf.keras.models.load_model('/home/fizzer/ros_ws/src/controller_pkg/src/node/my_model.h5')
 print('model loaded')
@@ -37,17 +35,6 @@ class data_collector:
   def callback(self,data):
 
     global new_model
-    global t
-    global init
-
-    if init == 0:
-      pub1 = rospy.Publisher('/license_plate', String, queue_size=1)
-      pub1.publish(str('Team8,gamer,0,XXXX'))
-      init = 1
-    elif (time.time()-t) > 10 and init == 1:
-      pub1 = rospy.Publisher('/license_plate', String, queue_size=1)
-      pub1.publish(str('Team8,gamer,-1,XXXX'))
-      init = 2
 
     try:
       cv_image = self.bridge.imgmsg_to_cv2(data, "bgr8")
@@ -75,10 +62,10 @@ class data_collector:
       move.linear.x = LINVEL
       move.angular.z = 0
     elif action == 1: 
-      move.linear.x = LINVEL * 0.2
+      move.linear.x = 0
       move.angular.z = -1 * ANGVEL
     else:
-      move.linear.x = LINVEL * 0.2
+      move.linear.x = 0
       move.angular.z = ANGVEL
     pub.publish(move)
     print(action)

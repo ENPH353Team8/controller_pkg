@@ -20,14 +20,14 @@ cv2.__version__
 from geometry_msgs.msg import Twist
 from random import randrange
 
+from std_msgs.msg import String
+
 from matplotlib import pyplot as plt
 
 import os
 
 import tensorflow as tf
 from tensorflow import keras
-
-
 
 # Load images at start
 TEST_IMAGE = cv2.imread("/home/fizzer/ros_ws/src/controller_pkg/src/node/blurryP.png", cv2.IMREAD_GRAYSCALE)  # queryiamge
@@ -154,16 +154,20 @@ def prediction(y_predict):
       val = i
 
 
-  if (val < 26):
-    val += 65
-    guess = chr(val)
-
-  else:
-    val -= 26
-    val += 48
-    guess = chr(val)
+  val += 65
+  guess = chr(val)
     
   return str(guess)
+
+def numPrediction(y_predict):
+  max = 0
+  val = 0
+  for i in range(len(y_predict)):
+    if (y_predict[i] > max):
+      max = y_predict[i]
+      val = i
+  
+  return str(val)
 
 # Transforms image to be ready for CNN
 def img_transform(img, dim, threshold):
@@ -186,8 +190,8 @@ class image_converter:
       print(e)
 
     ## Display the output of the camera on the robot
-    cv2.imshow("Image window", cv_image)
-    cv2.waitKey(1)
+    # cv2.imshow("Image window", cv_image)
+    # cv2.waitKey(1)
 
     frame = cv_image
 
@@ -326,63 +330,72 @@ class image_converter:
       letter4 = plate[0:len(plate),3*quad:4*quad - 1]
       sizedL4 = img_transform(letter4, dim, threshold)
 
-      cv2.imshow("L1", sizedL1)
-      cv2.waitKey(1)
-      cv2.imshow("L2", sizedL2)
-      cv2.waitKey(1)
-      cv2.imshow("L3", sizedL3)
-      cv2.waitKey(1)
-      cv2.imshow("L4", sizedL4)
-      cv2.waitKey(1)
+      # cv2.imshow("L1", sizedL1)
+      # cv2.waitKey(1)
+      # cv2.imshow("L2", sizedL2)
+      # cv2.waitKey(1)
+      # cv2.imshow("L3", sizedL3)
+      # cv2.waitKey(1)
+      # cv2.imshow("L4", sizedL4)
+      # cv2.waitKey(1)
 
-      cv2.imwrite("/home/fizzer/ros_ws/src/controller_pkg/src/node/letter.jpg", sizedL1)
+      photoNum1 = np.random.randint(0, 1000000)
+      photoNum2 = np.random.randint(0, 1000000)
+      photoNum3 = np.random.randint(0, 1000000)
+      photoNum4 = np.random.randint(0, 1000000)
+
+      # cv2.imwrite("/home/fizzer/ros_ws/src/controller/src/node/licenseData/H{}.png".format(photoNum1) , sizedL1)
+      # cv2.imwrite("/home/fizzer/ros_ws/src/controller/src/node/licenseData/H{}.png".format(photoNum2) , sizedL2)
+      # cv2.imwrite("/home/fizzer/ros_ws/src/controller/src/node/seven/7{}.png".format(photoNum3) , sizedL3)
+      # cv2.imwrite("/home/fizzer/ros_ws/src/controller/src/node/seven/1{}.png".format(photoNum4) , sizedL4)
+
 
       
-      new_model = tf.keras.models.load_model('/home/fizzer/ros_ws/src/controller_pkg/src/node/convolution2.h5')
+      letter_model = tf.keras.models.load_model('/home/fizzer/ros_ws/src/controller_pkg/src/node/letters1.h5')
+      number_model = tf.keras.models.load_model('/home/fizzer/ros_ws/src/controller_pkg/src/node/numbers3.h5')
 
-      y_predict1 = new_model.predict(np.expand_dims(sizedL1, axis=0))[0]
-      y_predict2 = new_model.predict(np.expand_dims(sizedL2, axis=0))[0]
-      y_predict3 = new_model.predict(np.expand_dims(sizedL3, axis=0))[0]
-      y_predict4 = new_model.predict(np.expand_dims(sizedL4, axis=0))[0]
+      y_predict1 = letter_model.predict(np.expand_dims(sizedL1, axis=0))[0]
+      y_predict2 = letter_model.predict(np.expand_dims(sizedL2, axis=0))[0]
+      y_predict3 = number_model.predict(np.expand_dims(sizedL3, axis=0))[0]
+      y_predict4 = number_model.predict(np.expand_dims(sizedL4, axis=0))[0]
 
       guess = np.array(["", "", "", ""])
 
       guess[0] = prediction(y_predict1)
       guess[1] = prediction(y_predict2)
-      guess[2] = prediction(y_predict3)
-      guess[3] = prediction(y_predict4)
+      guess[2] = numPrediction(y_predict3)
+      guess[3] = numPrediction(y_predict4)
+
+      print(y_predict3)
+      print(y_predict4)
 
       print(guess)
+      strGuess = "{}{}{}{}".format(guess[0], guess[1], guess[2], guess[3])
+
+      # parkGuess = str(dataprocess(subframe))
+      parkGuess = "2"
+
+      msg = str('Team8,gamer,{},{}'.format(parkGuess, strGuess))
+      pub = rospy.Publisher('/license_plate', String, queue_size=1)
+      pub.publish(msg)
       
     else:
       return
 
-def dataprocess(img, h, w):
+def dataprocess(subimg):
 
-  subimg = img[h:h + 500, w: w + 500]
-  plt.imshow(subimg)
-  plt.show()
-  findParkingID(img)
+  # plt.imshow(subimg)
+  # plt.show()
+  return findParkingID(subimg)
 
 
 def findParkingID(img):
 
-  prediction = np.array([0,0,0,0,0,0,0,0])
+  for i in range(1,8):
+    pred = SIFT(i, img)
 
-  for i in range(8):
-    h, w = SIFT(8 - i, img)
-
-    #if pred != 0:
-     # print(pred)
-      #return pred
-
-  # for j in range(5):
-
-  #   for i in range(1,8):
-  #     pred = SIFT(i, img)
-
-  #     if isinstance(pred, int):
-  #       prediction[i - 1] = prediction[i - 1] + 1
+    if isinstance(pred, int):
+      return i
 
   # max_pred = np.argmax(prediction) + 1
 
@@ -396,28 +409,28 @@ def SIFT(chooseImage, cv):
   frame = cv
   
   if (chooseImage == 1):
-    img = cv2.imread("/home/fizzer/ros_ws/src/controller/src/node/1.png", cv2.IMREAD_GRAYSCALE)  # queryiamge
+    img = cv2.imread("/home/fizzer/ros_ws/src/controller_pkg/src/node/1.png", cv2.IMREAD_GRAYSCALE)  # queryiamge
 
   elif (chooseImage == 2):
-    img = cv2.imread("/home/fizzer/ros_ws/src/controller/src/node/2.png", cv2.IMREAD_GRAYSCALE)  # queryiamge
+    img = cv2.imread("/home/fizzer/ros_ws/src/controller_pkg/src/node/2.png", cv2.IMREAD_GRAYSCALE)  # queryiamge
   
   elif (chooseImage == 3):
-    img = cv2.imread("/home/fizzer/ros_ws/src/controller/src/node/3.png", cv2.IMREAD_GRAYSCALE)  # queryiamge
+    img = cv2.imread("/home/fizzer/ros_ws/src/controller_pkg/src/node/3.png", cv2.IMREAD_GRAYSCALE)  # queryiamge
   
   elif (chooseImage == 4):
-    img = cv2.imread("/home/fizzer/ros_ws/src/controller/src/node/4.png", cv2.IMREAD_GRAYSCALE)  # queryiamge
+    img = cv2.imread("/home/fizzer/ros_ws/src/controller_pkg/src/node/4.png", cv2.IMREAD_GRAYSCALE)  # queryiamge
 
   elif (chooseImage == 5):
-    img = cv2.imread("/home/fizzer/ros_ws/src/controller/src/node/5.png", cv2.IMREAD_GRAYSCALE)  # queryiamge
+    img = cv2.imread("/home/fizzer/ros_ws/src/controller_pkg/src/node/5.png", cv2.IMREAD_GRAYSCALE)  # queryiamge
 
   elif (chooseImage == 6):
-    img = cv2.imread("/home/fizzer/ros_ws/src/controller/src/node/6.png", cv2.IMREAD_GRAYSCALE)  # queryiamge
+    img = cv2.imread("/home/fizzer/ros_ws/src/controller_pkg/src/node/6.png", cv2.IMREAD_GRAYSCALE)  # queryiamge
 
   elif (chooseImage == 7):
-    img = cv2.imread("/home/fizzer/ros_ws/src/controller/src/node/7.png", cv2.IMREAD_GRAYSCALE)  # queryiamge
+    img = cv2.imread("/home/fizzer/ros_ws/src/controller_pkg/src/node/7.png", cv2.IMREAD_GRAYSCALE)  # queryiamge
 
   elif (chooseImage == 8):
-    img = cv2.imread("/home/fizzer/ros_ws/src/controller/src/node/8.png", cv2.IMREAD_GRAYSCALE)  # queryiamge
+    img = cv2.imread("/home/fizzer/ros_ws/src/controller_pkg/src/node/8.png", cv2.IMREAD_GRAYSCALE)  # queryiamge
 
   #thresh = 0.7
 
@@ -451,7 +464,7 @@ def SIFT(chooseImage, cv):
     matrix, mask = cv2.findHomography(query_pts, train_pts, cv2.RANSAC, 5.0)
     matches_mask = mask.ravel().tolist()
   except Exception:
-    return 0
+    return
 
   # Perspective transform
   h, w = img.shape
@@ -468,9 +481,12 @@ def SIFT(chooseImage, cv):
 
 
 def main(args):
+  rospy.init_node('image_converter')
+
   ic = image_converter()
   ic.__init__
-  rospy.init_node('image_converter', anonymous=True)
+  #rospy.init_node('image_converter', anonymous=True)
+
 
   try:
     rospy.spin()
