@@ -40,7 +40,7 @@ class data_collector:
     dim = (320, 180)
     im_rs = cv2.resize(im_bw, dim, interpolation = cv2.INTER_AREA)
 
-    # cv2.imshow('img', im_rs)
+    cv2.imshow('img', im_rs)
     # cv2.waitKey(0)
     # cv2.destroyAllWindows()
 
