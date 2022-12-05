@@ -18,7 +18,7 @@ from cv_bridge import CvBridge, CvBridgeError
 import tensorflow as tf
 from tensorflow import keras
 
-LINVEL = 0.15
+LINVEL = 0.1
 ANGVEL = 0.4
 
 new_model = tf.keras.models.load_model('/home/fizzer/ros_ws/src/controller_pkg/src/node/my_model.h5')
