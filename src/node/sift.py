@@ -31,12 +31,12 @@ import tensorflow as tf
 from tensorflow import keras
 
 # Load images at start
-TEST_IMAGE = cv2.imread("/home/fizzer/ros_ws/src/controller/src/node/blurryP.png", cv2.IMREAD_GRAYSCALE)  # queryiamge
+TEST_IMAGE = cv2.imread("/home/fizzer/ros_ws/src/controller_pkg/src/node/blurryP.png", cv2.IMREAD_GRAYSCALE)  # queryiamge
 TEST_IMAGE2 = cv2.imread("/home/fizzer/ros_ws/src/controller/src/node/blurryp2.png", cv2.IMREAD_GRAYSCALE)
 
-letter_model = tf.keras.models.load_model('/home/fizzer/ros_ws/src/controller/src/node/letters4.h5')
-number_model = tf.keras.models.load_model('/home/fizzer/ros_ws/src/controller/src/node/numbers8.h5')
-parking_model = tf.keras.models.load_model('/home/fizzer/ros_ws/src/controller/src/node/parkingID.h5')
+letter_model = tf.keras.models.load_model('/home/fizzer/ros_ws/src/controller_pkg/src/node/letters4.h5')
+number_model = tf.keras.models.load_model('/home/fizzer/ros_ws/src/controller_pkg/src/node/numbers8.h5')
+parking_model = tf.keras.models.load_model('/home/fizzer/ros_ws/src/controller_pkg/src/node/parkingID.h5')
 
 predictions = {"1": [[], [], [], []], "2": [[], [], [], []], "3": [[], [], [], []], "4": [[], [], [], []], "5": [[], [], [], []], "6": [[], [], [], []], "7": [[], [], [], []], "8": [[], [], [], []],}
 
