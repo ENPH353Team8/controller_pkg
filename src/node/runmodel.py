@@ -87,19 +87,6 @@ class data_collector:
     global ang
     global t
 
-    if START == 1:
-      pub = rospy.Publisher('/R1/cmd_vel', Twist, queue_size=1)
-      move = Twist()
-      move.linear.x = 0.2
-      move.angular.z = 0
-      time.sleep(5)
-      START = 0
-      return
-
-    if lin < 0:
-      LINVEL = 0.05
-      ANGVEL = 0.133
-
     try:
       cv_image = self.bridge.imgmsg_to_cv2(data, "bgr8")
     except CvBridgeError as e:
