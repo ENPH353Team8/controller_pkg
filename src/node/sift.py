@@ -10,6 +10,8 @@ import sys
 from scipy import stats as st
 import numpy as np
 import cv2 as cv
+import time
+import pickle 
 
 import rospy
 import copy
@@ -32,11 +34,13 @@ from tensorflow import keras
 
 # Load images at start
 TEST_IMAGE = cv2.imread("/home/fizzer/ros_ws/src/controller_pkg/src/node/blurryP.png", cv2.IMREAD_GRAYSCALE)  # queryiamge
-TEST_IMAGE2 = cv2.imread("/home/fizzer/ros_ws/src/controller/src/node/blurryp2.png", cv2.IMREAD_GRAYSCALE)
+TEST_IMAGE2 = cv2.imread("/home/fizzer/ros_ws/src/controller_pkg/src/node/blurryp2.png", cv2.IMREAD_GRAYSCALE)
 
-letter_model = tf.keras.models.load_model('/home/fizzer/ros_ws/src/controller_pkg/src/node/letters4.h5')
-number_model = tf.keras.models.load_model('/home/fizzer/ros_ws/src/controller_pkg/src/node/numbers8.h5')
-parking_model = tf.keras.models.load_model('/home/fizzer/ros_ws/src/controller_pkg/src/node/parkingID.h5')
+letter_model = tf.keras.models.load_model('/home/fizzer/ros_ws/src/controller_pkg/src/node/letters5.h5')
+letter_model3 = tf.keras.models.load_model('/home/fizzer/ros_ws/src/controller_pkg/src/node/letters6.h5')
+letter_model2 = tf.keras.models.load_model('/home/fizzer/ros_ws/src/controller_pkg/src/node/letters7.h5')
+number_model = tf.keras.models.load_model('/home/fizzer/ros_ws/src/controller_pkg/src/node/numbers11.h5')
+parking_model = tf.keras.models.load_model('/home/fizzer/ros_ws/src/controller_pkg/src/node/parkingID2.h5')
 
 predictions = {"1": [[], [], [], []], "2": [[], [], [], []], "3": [[], [], [], []], "4": [[], [], [], []], "5": [[], [], [], []], "6": [[], [], [], []], "7": [[], [], [], []], "8": [[], [], [], []],}
 
@@ -149,18 +153,27 @@ def rightLimit(row, xVal, homography):
   return len(homography[0])
 
 #checks whether a pixel is part of a letter
-def checkLetter(B, G, R):
-  if (B >= 85 and B <= 130) and (G >= 8 and G <= 62) and (R >= 8 and R <= 62):
-    return True
+def checkLetter(B, G, R, letter=True):
 
-  if (B >= 105 and B <= 118) and (G >= 40 and G <= 62) and (R >= 40 and R <= 62):
-    return True
+  if letter:
+    if (B >= 85 and B <= 130) and (G >= 8 and G <= 68) and (R >= 8 and R <= 68):
+      return True
+
+    if (B >= 105 and B <= 118) and (G >= 40 and G <= 68) and (R >= 40 and R <= 68):
+      return True
+  
+  else:
+    if (B >= 85 and B <= 130) and (G >= 8 and G <= 62) and (R >= 8 and R <= 60):
+      return True
+
+    if (B >= 105 and B <= 118) and (G >= 40 and G <= 62) and (R >= 40 and R <= 60):
+      return True
   
   #Threshold is different for letters on the hill
-  elif (B >= 170 and B <= 200) and (G >= 30 and G <= 100) and (R >= 30 and R <= 100):
+  if (B >= 170 and B <= 200) and (G >= 30 and G <= 100) and (R >= 30 and R <= 100):
     return True
   
-  elif (B >= 170 and B <= 200) and (G >= 15 and G <= 25) and (R >= 15 and R <= 25):
+  if (B >= 170 and B <= 200) and (G >= 15 and G <= 25) and (R >= 15 and R <= 25):
     return True
   
   return False
@@ -189,7 +202,7 @@ def numPrediction(y_predict):
       val = i
   
   return str(val)
-
+  
 def parkID_Prediction(y_predict):
   max = 0
   val = 0
@@ -210,6 +223,8 @@ def img_transform(img, dim, threshold):
 # Checks if plate image is valid
 def plateValidity(plate):
   if (len(plate) > 20):
+    return False
+  if (len(plate[0]) < 100):
     return False
   row = int(len(plate)/2)
   for i in range(int(len(plate[0])/4)):
@@ -236,21 +251,20 @@ def processParkingID(parkingID):
 
   return parkingID
 
-
-
-
-
 class image_converter:
 
   def __init__(self):
     self.bridge = CvBridge()
+    self.pred = predictions
     self.image_sub = rospy.Subscriber('/R1/pi_camera/image_raw',Image, self.callback)
 
   def callback(self,data):
     try:
-      cv_image = self.bridge.imgmsg_to_cv2(data, "bgr8")
+      cv_image_raw = self.bridge.imgmsg_to_cv2(data, "bgr8")
     except CvBridgeError as e:
       print(e)
+
+    cv_image = cv_image_raw[250:len(cv_image_raw) - 50,]
 
     ## Display the output of the camera on the robot
     # cv2.imshow("Image window", cv_image)
@@ -275,6 +289,14 @@ class image_converter:
     if sift is None:
       return
     siftPoints = cleanPoints(sift)
+
+    # pub = rospy.Publisher('/R1/cmd_vel', Twist, queue_size=1)
+    # move = Twist()
+    # for i in range(10):
+    #   move.linear.x = -0.021
+    #   move.angular.z = 0
+    #   pub.publish(move)
+    #   time.sleep(0.05)
 
     # If SIFT finds the P, SIFT is performed 2 more times
     sift2 = DoSIFT(TEST_IMAGE, frame)
@@ -397,8 +419,9 @@ class image_converter:
       except:
         return
     
-      # cv2.imshow("plate", plate)
-      # cv2.waitKey(1)
+      cv2.imshow("plate", plate)
+      cv2.waitKey(1)
+      print(np.shape(plate))
 
       # Slice plate into each letter
       length = len(subframe[0]) 
@@ -431,42 +454,61 @@ class image_converter:
       # photoNum3 = np.random.randint(0, 1000000)
       # photoNum4 = np.random.randint(0, 1000000)
 
-      # cv2.imwrite("/home/fizzer/ros_ws/src/controller/src/node/parkingID/7{}.png".format(photoNum1) , parkingID)
+      # cv2.imwrite("/home/fizzer/ros_ws/src/controller_pkg/src/node/moreID/2-{}.png".format(photoNum1) , parkingID)
 
-      # cv2.imwrite("/home/fizzer/ros_ws/src/controller/src/node/more3/E{}.png".format(photoNum1) , sizedL1)
-      # cv2.imwrite("/home/fizzer/ros_ws/src/controller/src/node/more3/Q{}.png".format(photoNum2) , sizedL2)
-      # cv2.imwrite("/home/fizzer/ros_ws/src/controller/src/node/more3/3{}.png".format(photoNum3) , sizedL3)
-      # cv2.imwrite("/home/fizzer/ros_ws/src/controller/src/node/more3/7{}.png".format(photoNum4) , sizedL4)
+      # cv2.imwrite("/home/fizzer/ros_ws/src/controller_pkg/src/node/MOREEEE/G-{}.png".format(photoNum1) , sizedL1)
+      # cv2.imwrite("/home/fizzer/ros_ws/src/controller_pkg/src/node/MOREEEE/G-{}.png".format(photoNum2) , sizedL2)
+      # cv2.imwrite("/home/fizzer/ros_ws/src/controller_pkg/src/node/MOREEEE/G-{}.png".format(photoNum3) , sizedL3)
+      # cv2.imwrite("/home/fizzer/ros_ws/src/controller_pkg/src/node/MOREEEE/G-{}.png".format(photoNum4) , sizedL4)
 
       y_predict1 = letter_model.predict(np.expand_dims(sizedL1, axis=0))[0]
+      y_predict1a = letter_model2.predict(np.expand_dims(sizedL1, axis=0))[0]
+      y_predict1b = letter_model3.predict(np.expand_dims(sizedL1, axis=0))[0]
       y_predict2 = letter_model.predict(np.expand_dims(sizedL2, axis=0))[0]
+      y_predict2a = letter_model2.predict(np.expand_dims(sizedL2, axis=0))[0]
+      y_predict2b = letter_model2.predict(np.expand_dims(sizedL2, axis=0))[0]
       y_predict3 = number_model.predict(np.expand_dims(sizedL3, axis=0))[0]
       y_predict4 = number_model.predict(np.expand_dims(sizedL4, axis=0))[0]
 
       ID_predict = parking_model.predict(np.expand_dims(parkingID, axis=0))[0]
 
-      guess = np.array(["", "", "", ""])
+      guess = np.array(["", "", "", "", "", "", "", ""])
 
       guess[0] = prediction(y_predict1)
       guess[1] = prediction(y_predict2)
       guess[2] = numPrediction(y_predict3)
       guess[3] = numPrediction(y_predict4)
+      guess[4] = prediction(y_predict1a)
+      guess[5] = prediction(y_predict2a)
+      guess[6] = prediction(y_predict1b)
+      guess[7] = prediction(y_predict2b)
 
       parkingID_guess = parkID_Prediction(ID_predict)
 
+
+      # pred = loadQ("predictions")
+      # with open('filename.pickle', 'rb') as handle:
+      #   pred = pickle.load(handle)
       key = predictions.get(parkingID_guess)
       key[0].append(guess[0])
+      key[0].append(guess[4])
+      key[0].append(guess[6])
       key[1].append(guess[1])
+      key[1].append(guess[5])
+      key[1].append(guess[7])
       key[2].append(guess[2])
       key[3].append(guess[3])
 
+
+      # with open('filename2.pickle', 'wb') as handle:
+      #   pickle.dump(pred, handle, protocol=pickle.HIGHEST_PROTOCOL)
+
       print(key)
 
-      print(guess)
       print("ParkingID: {}".format(parkingID_guess))
 
       strGuess = "{}{}{}{}".format(most_common(key[0]), most_common(key[1]), most_common(key[2]), most_common(key[3]))
-      # strGuess = "{}{}{}{}".format(guess[0], guess[1], guess[2], guess[3])
+      print(strGuess)
 
       msg = str('Team8,gamer,{},{}'.format(parkingID_guess, strGuess))
       pub = rospy.Publisher('/license_plate', String, queue_size=1)
@@ -478,87 +520,6 @@ class image_converter:
 # From https://stackoverflow.com/questions/1518522/find-the-most-common-element-in-a-list 
 def most_common(lst):
     return max(set(lst), key=lst.count)
-
-# def dataprocess(subimg):
-
-#   # plt.imshow(subimg)
-#   # plt.show()
-#   return findParkingID(subimg)
-
-
-# def findParkingID(img):
-
-#   for i in range(1,8):
-#     pred = SIFT(i, img)
-
-#     if isinstance(pred, int):
-#       return i
-    
-
-
-# def SIFT(chooseImage, cv):
-
-#   frame = cv
-  
-#   if (chooseImage == 1):
-#     img = cv2.imread("/home/fizzer/ros_ws/src/controller/src/node/1.png", cv2.IMREAD_GRAYSCALE)  # queryiamge
-
-#   elif (chooseImage == 2):
-#     img = cv2.imread("/home/fizzer/ros_ws/src/controller/src/node/2.png", cv2.IMREAD_GRAYSCALE)  # queryiamge
-  
-#   elif (chooseImage == 3):
-#     img = cv2.imread("/home/fizzer/ros_ws/src/controller/src/node/3.png", cv2.IMREAD_GRAYSCALE)  # queryiamge
-  
-#   elif (chooseImage == 4):
-#     img = cv2.imread("/home/fizzer/ros_ws/src/controller/src/node/4.png", cv2.IMREAD_GRAYSCALE)  # queryiamge
-
-#   elif (chooseImage == 5):
-#     img = cv2.imread("/home/fizzer/ros_ws/src/controller/src/node/5.png", cv2.IMREAD_GRAYSCALE)  # queryiamge
-
-#   elif (chooseImage == 6):
-#     img = cv2.imread("/home/fizzer/ros_ws/src/controller/src/node/6.png", cv2.IMREAD_GRAYSCALE)  # queryiamge
-
-#   elif (chooseImage == 7):
-#     img = cv2.imread("/home/fizzer/ros_ws/src/controller/src/node/7.png", cv2.IMREAD_GRAYSCALE)  # queryiamge
-
-#   elif (chooseImage == 8):
-#     img = cv2.imread("/home/fizzer/ros_ws/src/controller/src/node/8.png", cv2.IMREAD_GRAYSCALE)  # queryiamge
-
-#   #thresh = 0.7
-
-#   #if (chooseImage == 6 or chooseImage == 1 or chooseImage == 7):
-#    # thresh = 0.6
-  
-#   cap = frame
-#   # Features
-#   sift = cv2.xfeatures2d.SIFT_create()
-#   kp_image, desc_image = sift.detectAndCompute(img, None)
-#   # Feature matching
-#   index_params = dict(algorithm=0, trees=5)
-#   search_params = dict()
-#   flann = cv2.FlannBasedMatcher(index_params, search_params)
-
-#   grayframe = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)  # trainimage
-#   kp_grayframe, desc_grayframe = sift.detectAndCompute(grayframe, None)
-#   matches = flann.knnMatch(desc_image, desc_grayframe, k=2)
-#   good_points = []
-
-#   for m, n in matches:
-#     if m.distance < 0.7 * n.distance:
-#         good_points.append(m)
-
-#   query_pts = np.float32([kp_image[m.queryIdx].pt for m in good_points]).reshape(-1, 1, 2)
-#   train_pts = np.float32([kp_grayframe[m.trainIdx].pt for m in good_points]).reshape(-1, 1, 2)
-    
-#   found = True
-
-#   try:
-#     matrix, mask = cv2.findHomography(query_pts, train_pts, cv2.RANSAC, 5.0)
-#     matches_mask = mask.ravel().tolist()
-#   except Exception:
-#     return
-  
-#   return chooseImage
 
 
 def main(args):

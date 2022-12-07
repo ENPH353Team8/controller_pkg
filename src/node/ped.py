@@ -49,7 +49,7 @@ class data_collector:
       global i
       imgray = cv2.cvtColor(cv_image, cv2.COLOR_BGR2GRAY)
       thresh = 200
-      pedthresh = 150
+      pedthresh = 100
       im_bw = cv2.threshold(imgray, thresh, 255, cv2.THRESH_BINARY)[1]
       im_bw_ped = cv2.threshold(imgray, pedthresh, 255, cv2.THRESH_BINARY)[1]
       dim = (320, 180)

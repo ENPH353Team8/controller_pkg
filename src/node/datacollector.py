@@ -15,7 +15,7 @@ from sensor_msgs.msg import Image
 from cv_bridge import CvBridge, CvBridgeError
 linvel = 0
 angvel = 0
-i = 1
+i = 5732
 
 class data_collector:
 
@@ -41,7 +41,7 @@ class data_collector:
     im_rs = cv2.resize(im_bw, dim, interpolation = cv2.INTER_AREA)
 
     cv2.imshow('img', im_rs)
-    # cv2.waitKey(0)
+    cv2.waitKey(1)
     # cv2.destroyAllWindows()
 
     global linvel
@@ -49,14 +49,14 @@ class data_collector:
     global i
 
     if linvel > 0.1:
-      action = "F"
+      action = "1"
     elif angvel < -0.3:
-      action = "L"
+      action = "2"
     else:
-      action = "R"
+      action = "0"
 
     if linvel < 0.1 and angvel < 0.3 and angvel > -0.3:
-      print("skip")
+      return
     else:
       path = "/home/fizzer/data/" + str(i) + "_" + action + ".jpg"
       cv2.imwrite(path, im_rs)

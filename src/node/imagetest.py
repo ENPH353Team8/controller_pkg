@@ -10,7 +10,7 @@ from cv_bridge import CvBridge, CvBridgeError
 
 im = cv2.imread('/home/fizzer/ros_ws/src/controller_pkg/src/node/frame.jpg')
 imgray = cv2.cvtColor(im, cv2.COLOR_BGR2GRAY)
-thresh = 200
+thresh = 100
 im_bw = cv2.threshold(imgray, thresh, 255, cv2.THRESH_BINARY)[1]
 print(np.shape(im_bw))
 im_bw_crop = im_bw[250:400, 400:700]

@@ -4,6 +4,21 @@
     name="runmodel"
     output="screen">
     </node>
+    <!-- <node pkg="controller_pkg"
+    type="runmodel2.py"
+    name="runmodel2"
+    output="screen">
+    </node>
+    <node pkg="controller_pkg"
+    type="runmodel3.py"
+    name="runmodel3"
+    output="screen">
+    </node>
+    <node pkg="controller_pkg"
+    type="runmodel4.py"
+    name="runmodel4"
+    output="screen">
+    </node> -->
     <node pkg="controller_pkg"
     type="timer.py"
     name="timer"
@@ -14,9 +29,24 @@
     name="sift"
     output="screen">   
     </node>
+    <!-- <node pkg="controller_pkg"
+    type="sift2.py"
+    name="sift2"
+    output="screen">   
+    </node>
     <node pkg="controller_pkg"
+    type="sift3.py"
+    name="sift3"
+    output="screen">   
+    </node>
+    <node pkg="controller_pkg"
+    type="sift4.py"
+    name="sift4"
+    output="screen">   
+    </node> -->
+    <!-- <node pkg="controller_pkg"
     type="crosswalk.py"
     name="crosswalk"
     output="screen">   
-    </node>
+    </node> -->
 </launch>
