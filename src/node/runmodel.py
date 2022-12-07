@@ -18,6 +18,9 @@ from cv_bridge import CvBridge, CvBridgeError
 import tensorflow as tf
 from tensorflow import keras
 
+LINVEL = 0.1
+ANGVEL = 0.264
+START = 1
 lin = 0
 ang = 0
 t = time.time()
@@ -79,18 +82,31 @@ class data_collector:
 
   def callback(self,data):
 
+    global new_model
     global lin
     global ang
     global t
+
+    if START == 1:
+      pub = rospy.Publisher('/R1/cmd_vel', Twist, queue_size=1)
+      move = Twist()
+      move.linear.x = 0.2
+      move.angular.z = 0
+      time.sleep(5)
+      START = 0
+      return
+
+    if lin < 0:
+      LINVEL = 0.05
+      ANGVEL = 0.133
 
     try:
       cv_image = self.bridge.imgmsg_to_cv2(data, "bgr8")
     except CvBridgeError as e:
       print(e)
 
-    # if lin < 0.01 and abs(ang) < 0.01 and (time.time()-t) > 3:
-    #   print('paused')
-    #   return
+    # if not self.stop(cv_image):
+    #   self.nav(cv_image)
     # else:
     #   nav(cv_image)
     nav(cv_image)
